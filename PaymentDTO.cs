@@ -71,4 +71,6 @@ public class AccountDTO
 public class CreatePaymentResponse
 {
     public int Id { get; set; }
+    public string WebHookDestiny { get; set; }
+    public string WebHookOrigin { get; set; }
 }

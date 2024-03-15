@@ -24,11 +24,6 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-// Database
-var connString = "Host=localhost;Username=postgres;Password=151099;Database=pix-dotnet";
-await using var conn = new NpgsqlConnection(connString);
-await conn.OpenAsync();
-
 // RabbitMQ configuration
 var connectionFactory = new ConnectionFactory()
 {
@@ -45,7 +40,7 @@ using var client = new HttpClient();
 
 channel.QueueDeclare(
     queue: queueName,
-    durable: false,
+    durable: true,
     exclusive: false,
     autoDelete: false,
     arguments: null
@@ -67,52 +62,75 @@ consumer.Received += async (model, ea) =>
 
     try
     {
-        var requestTask = client.PostAsJsonAsync("http://localhost:5039/payments/pix", payment.DTO, cts.Token);
-        var response = await requestTask;
+        var destinyTask = client.PostAsJsonAsync($"{payment.Response.WebHookDestiny}/payments/pix", payment.DTO, cts.Token);
+        var destinyResponse = await destinyTask;
 
-        if (response.IsSuccessStatusCode)
+        if (destinyResponse.IsSuccessStatusCode)
         {
-            await using (var cmd = new NpgsqlCommand("UPDATE \"Payments\" SET \"Status\" = (@status) WHERE \"Id\" = @id", conn))
-            {
-                cmd.Parameters.AddWithValue("status", "SUCCESS");
-                cmd.Parameters.AddWithValue("id", payment.Response.Id);
-                await cmd.ExecuteNonQueryAsync();
-            }
+            await UpdatePaymentStatusAsync(payment.Response.Id, "SUCCESS");
 
-            Console.WriteLine("Transaction updated!");
+            channel.BasicAck(ea.DeliveryTag, false);
+            Console.WriteLine("Transaction marked as SUCCESS!");
+
+            var originBody = new PaymentStatusDTO
+            {
+                Id = payment.Response.Id,
+                Status = "SUCCESS"
+            };
+            await client.PatchAsJsonAsync($"{payment.Response.WebHookOrigin}/payments/pix", originBody);
         }
         else
         {
-            Console.WriteLine($"Request failed with status code {response.StatusCode}");
+            Console.WriteLine($"Request failed with status code {destinyResponse.StatusCode}");
 
-            await using (var cmd = new NpgsqlCommand("UPDATE \"Payments\" SET \"Status\" = (@status) WHERE \"Id\" = @id", conn))
-            {
-                cmd.Parameters.AddWithValue("status", "FAILED");
-                cmd.Parameters.AddWithValue("id", payment.Response.Id);
-                await cmd.ExecuteNonQueryAsync();
-            }
+            await UpdatePaymentStatusAsync(payment.Response.Id, "FAILED");
 
+            channel.BasicAck(ea.DeliveryTag, false);
             Console.WriteLine("Transaction marked as FAILED!");
+
+            var originBody = new PaymentStatusDTO
+            {
+                Id = payment.Response.Id,
+                Status = "FAILED"
+            };
+            await client.PatchAsJsonAsync($"{payment.Response.WebHookDestiny}/payments/pix", originBody);
         }
     }
-    catch (OperationCanceledException)
+    catch
     {
         Console.WriteLine("Request timed out!");
 
-        await using (var cmd = new NpgsqlCommand("UPDATE \"Payments\" SET \"Status\" = (@status) WHERE \"Id\" = @id", conn))
-        {
-            cmd.Parameters.AddWithValue("status", "FAILED");
-            cmd.Parameters.AddWithValue("id", payment.Response.Id);
-            await cmd.ExecuteNonQueryAsync();
-        }
+        await UpdatePaymentStatusAsync(payment.Response.Id, "FAILED");
 
+        channel.BasicAck(ea.DeliveryTag, false);
         Console.WriteLine("Transaction marked as FAILED!");
-    }
-    catch (Exception e)
-    {
-        Console.WriteLine($"Erro ao fazer a requisição: {e.Message}");
+
+        var originBody = new PaymentStatusDTO
+        {
+            Id = payment.Response.Id,
+            Status = "FAILED"
+        };
+        await client.PatchAsJsonAsync($"{payment.Response.WebHookDestiny}/payments/pix", originBody);
     }
 };
+
+async Task UpdatePaymentStatusAsync(int paymentId, string status)
+{
+    try
+    {
+        var body = new PaymentStatusDTO
+        {
+            Id = paymentId,
+            Status = status
+        };
+        await client.PutAsJsonAsync("http://localhost:5109/payments/update", body);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Error updating payment status: {ex.Message}");
+    }
+}
+
 
 channel.BasicConsume(queue: queueName, autoAck: false, consumer: consumer);
 
