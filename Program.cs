@@ -62,57 +62,45 @@ consumer.Received += async (model, ea) =>
 
     try
     {
-        var destinyTask = client.PostAsJsonAsync($"{payment.Response.WebHookDestiny}/payments/pix", payment.DTO, cts.Token);
+        var destinyTask = client.PostAsJsonAsync($"http://localhost:5039/payments/pix", payment.DTO, cts.Token);
         var destinyResponse = await destinyTask;
 
         if (destinyResponse.IsSuccessStatusCode)
         {
-            await UpdatePaymentStatusAsync(payment.Response.Id, "SUCCESS");
+            await ProcessPayment(payment, "SUCCESS");
 
             channel.BasicAck(ea.DeliveryTag, false);
-            Console.WriteLine("Transaction marked as SUCCESS!");
-
-            var originBody = new PaymentStatusDTO
-            {
-                Id = payment.Response.Id,
-                Status = "SUCCESS"
-            };
-            await client.PatchAsJsonAsync($"{payment.Response.WebHookOrigin}/payments/pix", originBody);
         }
         else
         {
-            Console.WriteLine($"Request failed with status code {destinyResponse.StatusCode}");
-
-            await UpdatePaymentStatusAsync(payment.Response.Id, "FAILED");
+            await ProcessPayment(payment, "FAILED");
 
             channel.BasicAck(ea.DeliveryTag, false);
-            Console.WriteLine("Transaction marked as FAILED!");
-
-            var originBody = new PaymentStatusDTO
-            {
-                Id = payment.Response.Id,
-                Status = "FAILED"
-            };
-            await client.PatchAsJsonAsync($"{payment.Response.WebHookDestiny}/payments/pix", originBody);
         }
     }
     catch
     {
-        Console.WriteLine("Request timed out!");
-
-        await UpdatePaymentStatusAsync(payment.Response.Id, "FAILED");
+        await ProcessPayment(payment, "FAILED");
 
         channel.BasicAck(ea.DeliveryTag, false);
-        Console.WriteLine("Transaction marked as FAILED!");
-
-        var originBody = new PaymentStatusDTO
-        {
-            Id = payment.Response.Id,
-            Status = "FAILED"
-        };
-        await client.PatchAsJsonAsync($"{payment.Response.WebHookDestiny}/payments/pix", originBody);
     }
+
+    Console.WriteLine("Payment processed.");
 };
+
+async Task ProcessPayment(PaymentMessage payment, string status)
+{
+    await UpdatePaymentStatusAsync(payment.PaymentId, status);
+
+    Console.WriteLine($"Transaction marked as {status}!");
+
+    var originBody = new PaymentStatusDTO
+    {
+        Id = payment.PaymentId,
+        Status = status
+    };
+    await client.PatchAsJsonAsync($"http://localhost:5039/payments/pix", originBody);
+}
 
 async Task UpdatePaymentStatusAsync(int paymentId, string status)
 {
@@ -123,7 +111,7 @@ async Task UpdatePaymentStatusAsync(int paymentId, string status)
             Id = paymentId,
             Status = status
         };
-        await client.PutAsJsonAsync("http://localhost:5109/payments/update", body);
+        await client.PutAsJsonAsync("http://localhost:8080/payments/update", body);
     }
     catch (Exception ex)
     {

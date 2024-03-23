@@ -3,8 +3,8 @@ using System.Text.Json;
 
 public class PaymentMessage
 {
-    public CreatePaymentDTO DTO { get; set; }
-    public CreatePaymentResponse Response { get; set; }
+    public required CreatePaymentDTO DTO { get; set; }
+    public required int PaymentId { get; set; }
 
     public string SerializeToJson()
     {
@@ -71,6 +71,4 @@ public class AccountDTO
 public class CreatePaymentResponse
 {
     public int Id { get; set; }
-    public string WebHookDestiny { get; set; }
-    public string WebHookOrigin { get; set; }
 }
