@@ -13,7 +13,7 @@ Para a construção do projeto foi utilizado as seguintes tecnologias:
 
 Para rodar o projeto localmente, siga os seguinter passos:
 
-1. Clone o repositório: `git clone https://github.com/pablodru/pix-stone-payment-consumer`;
+1. Clone o repositório: `git clone https://github.com/pablodru/pix-stone-payment-consumer.git`;
 2. Acesse o diretório do projeto: `cd pix-stone-payment-consumer`;
 3. Certifique-se de ter o RabbitMQ rodando em sua máquina e as credenciais de conexão com ele; 
 4. Rode o projeto com: `dotnet run`;
