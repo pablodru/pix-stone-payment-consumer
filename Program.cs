@@ -6,6 +6,11 @@ using Npgsql;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using System.Threading.Tasks;
+using System.Net;
+using System.Net.Http.Headers;
+
+string webHookDestiny = "http://localhost:5039/payments/pix";
+string webHookOrigin = "http://localhost:5039/payments/pix";
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,6 +28,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
 
 // RabbitMQ configuration
 var connectionFactory = new ConnectionFactory()
@@ -62,7 +68,7 @@ consumer.Received += async (model, ea) =>
 
     try
     {
-        var destinyTask = client.PostAsJsonAsync($"http://localhost:5039/payments/pix", payment.DTO, cts.Token);
+        var destinyTask = client.PostAsJsonAsync(webHookDestiny, payment.DTO, cts.Token);
         var destinyResponse = await destinyTask;
 
         if (destinyResponse.IsSuccessStatusCode)
@@ -99,7 +105,7 @@ async Task ProcessPayment(PaymentMessage payment, string status)
         Id = payment.PaymentId,
         Status = status
     };
-    await client.PatchAsJsonAsync($"http://localhost:5039/payments/pix", originBody);
+    await client.PatchAsJsonAsync(webHookOrigin, originBody);
 }
 
 async Task UpdatePaymentStatusAsync(int paymentId, string status)
@@ -111,6 +117,7 @@ async Task UpdatePaymentStatusAsync(int paymentId, string status)
             Id = paymentId,
             Status = status
         };
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "aceleracaoDrivenStone");
         await client.PutAsJsonAsync("http://localhost:8080/payments/update", body);
     }
     catch (Exception ex)
